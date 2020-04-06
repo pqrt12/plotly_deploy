@@ -1,15 +1,5 @@
-const colorscale = [
-    ['0.0', 'rgb(165,0,38)'],
-    ['0.111111111111', 'rgb(215,48,39)'],
-    ['0.222222222222', 'rgb(244,109,67)'],
-    ['0.333333333333', 'rgb(253,174,97)'],
-    ['0.444444444444', 'rgb(254,224,144)'],
-    ['0.555555555556', 'rgb(224,243,248)'],
-    ['0.666666666667', 'rgb(171,217,233)'],
-    ['0.777777777778', 'rgb(116,173,209)'],
-    ['0.888888888889', 'rgb(69,117,180)'],
-    ['1.0', 'rgb(49,54,149)']
-];
+//  so same OtuId found in different subject ID would have the same color.
+let maxOtuId = 1;
 
 function init() {
     let selector = d3.select("#selDataset");
@@ -23,23 +13,41 @@ function init() {
                 .text(sample)
                 .property("value", sample);
         });
-    })
+
+        //  find max otu_id across all subject ids.
+        data.samples.forEach(s => {
+            //  per subject max otu_id.
+            let maxId = Math.max.apply(Math, s.otu_ids);
+            if (maxOtuId < maxId) {
+                maxOtuId = maxId;   //  all subjects' max otu_id.
+            }
+        })
+
+        //  fire a "change" => default charts.
+        let evt = new Event("change");
+        document.getElementById("selDataset").dispatchEvent(evt);
+    });
 }
 
 function optionChanged(sampleId) {
     //  this is the test subject/sample id.
     console.log(sampleId);
     d3.json("samples.json").then(data => {
-        buildMetadata(sampleId, data);
-        buildCharts(sampleId, data);
+        let resultArray = data.metadata.filter(m => m.id == sampleId);
+        let result = resultArray[0];
+        buildPanel(result);
+        buildGaugeChart(result.wfreq);
+
+        //  pick sampleId's data;
+        let sampleArray = data.samples.filter(s => s.id == sampleId);
+        let sample = sampleArray[0];
+        buildBarChart(sample.otu_ids, sample.sample_values, sample.otu_labels);
+        buildBubbleChart(sample.otu_ids, sample.sample_values, sample.otu_labels);
     });
 }
 
-function buildMetadata(sampleId, data) {
+function buildPanel(result) {
 
-    let metadata = data.metadata;
-    let resultArray = metadata.filter(sampleObj => sampleObj.id == sampleId);
-    let result = resultArray[0];
     let PANEL = d3.select("#sample-metadata");
 
     PANEL.html("");
@@ -50,14 +58,12 @@ function buildMetadata(sampleId, data) {
     PANEL.append("h6").text("LOCATION: " + result.location);
     PANEL.append("h6").text("BBTYPE: " + result.bbtype);
     PANEL.append("h6").text("WFREQ: " + result.wfreq);
-
-    buildGaugeChart(result.wfreq);
 }
 
 function buildGaugeChart(wfreq) {
     //  ============================================
     //  angle in radian
-    let alpha = Math.PI * wfreq / 9.;
+    let alpha = Math.PI * wfreq / 9.0;
     alpha = Math.PI - alpha;
     if (wfreq < 0) {
         alpha = 0;
@@ -76,12 +82,17 @@ function buildGaugeChart(wfreq) {
 
     //  ============================================
     const pieColors = [
-        'rgba( 14, 127,   0, .5)', 'rgba( 14, 127,  0, .5)',
-        'rgba(110, 154,  22, .5)', 'rgba(110, 154, 22, .5)',
-        'rgba(170, 202,  42, .5)', 'rgba(170, 202, 42, .5)',
-        'rgba(202, 209,  95, .5)', 'rgba(202, 209, 95, .5)',
-        'rgba(210, 206, 145, .5)',
-        'rgba(255, 255, 255,  0)'       //  fully transparent.
+        'rgba(214, 249, 207, 0.5)',
+        'rgba(186, 228, 174, 0.5)',
+        'rgba(156, 209, 143, 0.5)',
+        'rgba(124, 191, 115, 0.5)',
+        'rgba( 85, 174,  91, 0.5)',
+        'rgba( 37, 157,  81, 0.5)',
+        'rgba(  7, 138,  78, 0.5)',
+        'rgba( 13, 117,  71, 0.5)',
+        'rgba( 23,  95,  61, 0.5)',
+        //        'rgba(25, 75, 49, 0.5)',
+        'rgba(255, 255, 255,   0)'      //  fully transparent.
     ];
 
     let pieSum = 0;
@@ -89,11 +100,12 @@ function buildGaugeChart(wfreq) {
         pieTexts = [];
     pieLabels = [];
     for (let i = 0; i < 9; i++) {
-        pieVals.push(1);
+        pieVals.push(1.0);
         pieTexts.push(String(i) + "-" + String(i + 1));
-        pieSum = pieSum + 1;
+        pieSum = pieSum + 1.0;
         pieLabels.push("wfreq = " + String(i + 1));
     }
+
     //  == 9.
     pieVals.push(pieSum);
     pieTexts.push("");
@@ -106,26 +118,54 @@ function buildGaugeChart(wfreq) {
             x: [0], y: [0],
             marker: { size: 28, color: '850000' },
             showlegend: false,
-            name: 'wfreq = ',
+            name: 'wfreq = ' + String(wfreq),
             text: String(wfreq),
-            hoverinfo: 'name + text'
+            hoverinfo: 'name'   //  'skip'
         },
+
         {
             values: pieVals,
             rotation: 90,
             direction: "clockwise",
             text: pieTexts,
             textinfo: 'text',
+            textfont: {
+                size: 18,
+            },
             textposition: 'inside',
             marker: {
                 colors: pieColors
             },
             labels: pieLabels,
-            hoverinfo: 'label',
+            hoverinfo: 'skip',   //  'label',
             hole: .5,
             type: 'pie',
             showlegend: false
-        }
+        },
+        /*
+                //  this is the gauge chart.
+                {
+                    domain: { x: [0.0, 1.0], y: [0.5, 1.0] },
+                    value: wfreq,
+        //            title: { text: "Speed" },
+                    type: "indicator",
+                    mode: "gauge",
+                    gauge: {
+                        axis: { range: [null, 9], visible: false },
+                        steps: [
+                            { range: [0, 1], color: "lightgray" },
+                            { range: [1, 2], color: "gray" },
+                            { range: [2, 3], color: "lightgray" },
+                            { range: [3, 4], color: "gray" },
+                            { range: [4, 5], color: "lightgray" },
+                            { range: [5, 6], color: "gray" },
+                            { range: [6, 7], color: "lightgray" },
+                            { range: [7, 8], color: "gray" },
+                            { range: [8, 9], color: "lightgray" }
+                        ],
+                    }
+                }
+        */
     ];
 
     //  layout.
@@ -163,14 +203,8 @@ function buildGaugeChart(wfreq) {
     Plotly.newPlot('gauge', data, layout);
 }
 
-function buildCharts(sampleId, data) {
+function buildBarChart(otu_ids, sample_values, otu_labels) {
 
-    //  pick sampleId's data;
-    let sample = data.samples.filter(s => s.id == sampleId);
-    //  get the all three array's
-    let otu_ids = sample[0].otu_ids;
-    let sample_values = sample[0].sample_values;
-    let otu_labels = sample[0].otu_labels;
     //  zip otu_ids, sample_values and otu_labels.
     let otus = otu_ids.map((e, i) => [e, sample_values[i], otu_labels[i]]);
     //  sort based on sample_values, or otus[i][1];
@@ -180,15 +214,13 @@ function buildCharts(sampleId, data) {
     // Reverse the array due to Plotly's defaults
     otus = otus.reverse();
 
-    console.log(otus);
-
     //  bar chart
-    //  Trace1 for the top OTU's
-    let trace1 = {
+    //  Trace for the top OTU's
+    let trace = {
         x: otus.map(e => e[1]),     //  sample_values
         y: otus.map(e => "OTU " + e[0]),    //  otu_ids
         text: otus.map(e => e[2]),  //  otu_labels
-        name: "Top 10 OTUs of " + sampleId,
+        name: "Top 10 OTUs",
         type: "bar",
         orientation: "h"
     };
@@ -198,7 +230,7 @@ function buildCharts(sampleId, data) {
         title: { text: "<b>Top OTUs</b>" },
         xaxis: { title: "Sample Value" },
         margin: {
-            l: 25,
+            l: 100,
             r: 25,
             t: 100,
             b: 100
@@ -206,22 +238,39 @@ function buildCharts(sampleId, data) {
     };
 
     // Render the plot to the div tag with id "bar"
-    Plotly.newPlot("bar", [trace1], layout);
+    Plotly.newPlot("bar", [trace], layout);
+}
 
+function buildBubbleChart(otu_ids, sample_values, otu_labels) {
     // ================================================================================
     //  map to following color scheme based on otu_id.
-    let max = Math.max.apply(Math, otu_ids);
-    let colors = otu_ids.map(id => Math.round((id * 9) / max));
-    colors = colors.map(i => colorscale[i][1]);
-    console.log(colors);
+    const colorscale = [
+        'rgb(64, 0, 75)',
+        'rgb(118, 42, 131)',
+        'rgb(153, 112, 171)',
+        'rgb(194, 165, 207)',
+        'rgb(231, 212, 232)',
+        'rgb(210, 216, 219)',
+        'rgb(199, 234, 229)',
+        'rgb(128, 205, 193)',
+        'rgb(53, 151, 143)',
+        'rgb(1, 102, 94)'
+    ];
 
-    trace1 = {
+    //  index to colorscale.
+    let size = colorscale.length;
+    let colorIds = otu_ids.map(id => Math.round((id * size) / maxOtuId));
+
+    let trace = {
         y: sample_values,   //  sample_values
         x: otu_ids,         //  otu_ids
+        text: otu_labels,   //  otu_labels
         mode: 'markers',
         marker: {
-            color: colors,
-            size: sample_values
+            color: colorIds.map(i => colorscale[i]),
+            size: sample_values,
+            sizeref: 0.05,
+            sizemode: 'area'
         }
     };
 
@@ -229,14 +278,14 @@ function buildCharts(sampleId, data) {
     layout = {
         title: { text: "<b>OTUs Bubble Chart</b><br>(radius represents sample value)" },
         xaxis: { title: "OTU ID" },
-        yaxis: { title: "Sample Value", }
-        //        height: 600,
-        //        width: 600
+        yaxis: { title: "Sample Value" },
+        //        height: 500,
+        //        width: 1000
+        autosize: true
     };
 
     // Render the plot to the div tag with id "bubble"
-    Plotly.newPlot("bubble", [trace1], layout);
-
-};
+    Plotly.newPlot("bubble", [trace], layout);
+}
 
 init();
